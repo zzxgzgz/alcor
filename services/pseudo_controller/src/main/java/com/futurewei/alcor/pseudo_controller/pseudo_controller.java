@@ -15,6 +15,10 @@ import com.jcraft.jsch.Channel;
 import com.jcraft.jsch.ChannelExec;
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.Session;
+import io.grpc.ManagedChannel;
+import io.grpc.ManagedChannelBuilder;
+import io.grpc.stub.StreamObserver;
+
 import java.io.InputStream;
 import java.io.OutputStream;
 
@@ -43,11 +47,11 @@ public class pseudo_controller {
 
         System.out.println("aca_node_one_ip: " + aca_node_one_ip + "\naca_node_two_ip: " + aca_node_two_ip + "\nuser name: "+user_name+"\npassword: "+password);
 //        execute_ssh_commands("docker run -itd --name test1 --net=none busybox sh", aca_node_one_ip, user_name, password);
-//        execute_ssh_commands("ovs-docker add-port br-int eth0 test1 --ipaddress=10.0.0.2/16 --macaddress=6c:dd:ee:00:00:02", aca_node_one_ip, user_name, password);
+//        execute_ssh_commands("ovs-docker add-port br-int eth0 test1 --ipaddress=10.0.0.2/16 --macaddress=6c:dd:ee:00:00:02 && ovs-docker set-vlan br-int eth0 test1 1", aca_node_one_ip, user_name, password);
 //
 //        execute_ssh_commands("docker ps", aca_node_one_ip, user_name, password);
 //        execute_ssh_commands("docker run -itd --name test2 --net=none busybox sh", aca_node_two_ip, user_name, password);
-//        execute_ssh_commands("ovs-docker add-port br-int eth0 test2 --ipaddress=10.0.0.3/16 --macaddress=6c:dd:ee:00:00:03", aca_node_two_ip, user_name, password);
+//        execute_ssh_commands("ovs-docker add-port br-int eth0 test2 --ipaddress=10.0.0.3/16 --macaddress=6c:dd:ee:00:00:03 && ovs-docker set-vlan br-int eth0 test2 1", aca_node_two_ip, user_name, password);
 //
 //        execute_ssh_commands("docker ps", aca_node_two_ip, user_name, password);
 
@@ -57,118 +61,179 @@ public class pseudo_controller {
         System.out.println("Trying to build the goalstatev2");
 
 
-        Goalstate.GoalStateV2 GoalState_builder = Goalstate.GoalStateV2.newBuilder().build();
+        Goalstate.GoalStateV2.Builder GoalState_builder = Goalstate.GoalStateV2.newBuilder();
 
         // start of setting up port 1 on aca node 1
-        Port.PortState new_port_states = Port.PortState.newBuilder().build();
+        Port.PortState.Builder new_port_states = Port.PortState.newBuilder();
 
-        new_port_states.newBuilderForType().setOperationType(Common.OperationType.CREATE);
+        new_port_states.setOperationType(Common.OperationType.CREATE);
 
         // fill in port state structs for port 1
-        Port.PortConfiguration Port_Configuration_builder = new_port_states.getConfiguration();
-        Port_Configuration_builder.toBuilder().setRevisionNumber(2);
-        Port_Configuration_builder.toBuilder().setUpdateType(Common.UpdateType.FULL);
-        Port_Configuration_builder.toBuilder().setId(port_id_1);
-        Port_Configuration_builder.toBuilder().setVpcId(vpc_id_1);
-        Port_Configuration_builder.toBuilder().setName(("tap" + port_id_1).substring(0, 14));
-        Port_Configuration_builder.toBuilder().setMacAddress("6c:dd:ee:00:00:02");
-        Port_Configuration_builder.toBuilder().setAdminStateUp(true);
+        Port.PortConfiguration.Builder config = new_port_states.getConfigurationBuilder();
+        config.
+                setRevisionNumber(2).
+                setUpdateType(Common.UpdateType.FULL).
+                setId(port_id_1).
+                setVpcId(vpc_id_1).
+                setName(("tap" + port_id_1).substring(0, 14)).
+                setMacAddress("6c:dd:ee:00:00:02");
+        Port.PortConfiguration.FixedIp.Builder fixedIpBuilder = Port.PortConfiguration.FixedIp.newBuilder();
+        fixedIpBuilder.setSubnetId(subnet_id_1);
+        fixedIpBuilder.setIpAddress("10.10.0.2");
+        config.addFixedIps(fixedIpBuilder.build());
+        Port.PortConfiguration.SecurityGroupId securityGroupId = Port.PortConfiguration.SecurityGroupId.newBuilder().setId("2").build();
+        config.addSecurityGroupIds(securityGroupId);
 
-        Port_Configuration_builder.toBuilder().addFixedIpsBuilder();
-        Port_Configuration_builder.toBuilder().getFixedIpsBuilderList().get(0).setSubnetId(subnet_id_1);
-        Port_Configuration_builder.toBuilder().getFixedIpsBuilderList().get(0).setIpAddress("10.0.0.2");
-
-        Port_Configuration_builder.toBuilder().addSecurityGroupIdsBuilder();
-        Port_Configuration_builder.toBuilder().getSecurityGroupIdsBuilder(0).setId("2");
-
-        // put the new port states of port 1 into the goalstatev2
-        GoalState_builder.getPortStatesMap().put("10.213.43.92-2",new_port_states);
+        new_port_states.setConfiguration(config.build());
+        System.out.println("Port config builder content for port 1: \n" + new_port_states.getConfiguration().getMacAddress() + "\n");
+        Port.PortState port_state_one = new_port_states.build();
+        GoalState_builder.putPortStates(port_state_one.getConfiguration().getId(),port_state_one);
+        GoalState_builder.putHostToResourceId(aca_node_one_ip + "-2",port_state_one.getConfiguration().getId());
+        System.out.println("Finished port state for port 1.");
 
         // fill in subnet state structs
-        Subnet.SubnetState new_subnet_states = Subnet.SubnetState.newBuilder().build();
+        Subnet.SubnetState.Builder new_subnet_states = Subnet.SubnetState.newBuilder();
 
-        new_subnet_states.toBuilder().setOperationType(Common.OperationType.INFO);
-        Subnet.SubnetConfiguration Subnetcofiguration_builder = new_subnet_states.getConfiguration();
-        Subnetcofiguration_builder.toBuilder().setRevisionNumber(2);
-        Subnetcofiguration_builder.toBuilder().setVpcId(vpc_id_1);
-        Subnetcofiguration_builder.toBuilder().setId(subnet_id_1);
-        Subnetcofiguration_builder.toBuilder().setCidr("10.0.0.0/24");
-        Subnetcofiguration_builder.toBuilder().setTunnelId(21);
+        new_subnet_states.setOperationType(Common.OperationType.INFO);
 
+        Subnet.SubnetConfiguration.Builder subnet_configuration_builder = Subnet.SubnetConfiguration.newBuilder();
+
+        subnet_configuration_builder.setRevisionNumber(2);
+        subnet_configuration_builder.setVpcId(vpc_id_1);
+        subnet_configuration_builder.setId(subnet_id_1);
+        subnet_configuration_builder.setCidr("10.0.0.0/24");
+        subnet_configuration_builder.setTunnelId(21);
+
+        new_subnet_states.setConfiguration(subnet_configuration_builder.build());
+
+        Subnet.SubnetState subnet_state_for_both_nodes = new_subnet_states.build();
         // put the new subnet state of subnet 1 into the goalstatev2
 
-        GoalState_builder.getSubnetStatesMap().put("10.213.43.92-1", new_subnet_states);
-        GoalState_builder.getSubnetStatesMap().put("10.213.43.93-1", new_subnet_states);
+        GoalState_builder.putSubnetStates(subnet_state_for_both_nodes.getConfiguration().getId(), subnet_state_for_both_nodes);
+        GoalState_builder.putHostToResourceId(aca_node_one_ip+"-1", subnet_state_for_both_nodes.getConfiguration().getId());
+        GoalState_builder.putHostToResourceId(aca_node_two_ip+"-1", subnet_state_for_both_nodes.getConfiguration().getId());
+//        GoalState_builder.putSubnetStates(aca_node_two_ip+"-1", subnet_state_for_both_nodes);
+
+        System.out.println("Subnet state is finished, content: \n" + subnet_state_for_both_nodes.getConfiguration().getCidr());
 
         // add a new neighbor state with CREATE
-        Neighbor.NeighborState new_neighborState = Neighbor.NeighborState.newBuilder().build();
-        new_neighborState.toBuilder().setOperationType(Common.OperationType.CREATE);
+        Neighbor.NeighborState.Builder new_neighborState_builder = Neighbor.NeighborState.newBuilder();
+        new_neighborState_builder.setOperationType(Common.OperationType.CREATE);
 
         // fill in neighbor state structs of port 3
-        Neighbor.NeighborConfiguration NeighborConfiguration_builder = new_neighborState.getConfiguration();
-        NeighborConfiguration_builder.toBuilder().setRevisionNumber(2);
-        NeighborConfiguration_builder.toBuilder().setVpcId(vpc_id_1);
-        NeighborConfiguration_builder.toBuilder().setId(port_id_2);
-        NeighborConfiguration_builder.toBuilder().setMacAddress("6c:dd:ee:00:00:03");
-        NeighborConfiguration_builder.toBuilder().setHostIpAddress(aca_node_two_ip);
+        Neighbor.NeighborConfiguration.Builder NeighborConfiguration_builder = Neighbor.NeighborConfiguration.newBuilder();
+        NeighborConfiguration_builder.setRevisionNumber(2);
+        NeighborConfiguration_builder.setVpcId(vpc_id_1);
+        NeighborConfiguration_builder.setId(port_id_2);
+        NeighborConfiguration_builder.setMacAddress("6c:dd:ee:00:00:03");
+        NeighborConfiguration_builder.setHostIpAddress(aca_node_two_ip);
 
-        NeighborConfiguration_builder.toBuilder().addFixedIpsBuilder();
-        NeighborConfiguration_builder.toBuilder().getFixedIpsBuilder(0).setNeighborType(Neighbor.NeighborType.L2);
-        NeighborConfiguration_builder.toBuilder().getFixedIpsBuilder(0).setSubnetId(subnet_id_1);
-        NeighborConfiguration_builder.toBuilder().getFixedIpsBuilder(0).setIpAddress("10.0.0.3");
+        Neighbor.NeighborConfiguration.FixedIp.Builder neighbor_fixed_ip_builder = Neighbor.NeighborConfiguration.FixedIp.newBuilder();
+        neighbor_fixed_ip_builder.setNeighborType(Neighbor.NeighborType.L2);
+        neighbor_fixed_ip_builder.setSubnetId(subnet_id_1);
+        neighbor_fixed_ip_builder.setIpAddress("10.0.0.3");
 
-        GoalState_builder.getNeighborStatesMap().put("10.213.43.92-3", new_neighborState);
+        NeighborConfiguration_builder.addFixedIps(neighbor_fixed_ip_builder.build());
+
+        new_neighborState_builder.setConfiguration(NeighborConfiguration_builder.build());
+        Neighbor.NeighborState neighborState_node_one = new_neighborState_builder.build();
+        GoalState_builder.putNeighborStates(neighborState_node_one.getConfiguration().getId(), neighborState_node_one);
+        GoalState_builder.putHostToResourceId(aca_node_one_ip+"-3", neighborState_node_one.getConfiguration().getId());
 
         // end of setting up port 1 on aca node 1
 
         // start of setting up port 2 on aca node 2
 
-        Port.PortState new_port_states_2 = Port.PortState.newBuilder().build();
+        Port.PortState.Builder new_port_states_port_2 = Port.PortState.newBuilder();
 
-        new_port_states.newBuilderForType().setOperationType(Common.OperationType.CREATE);
+        new_port_states_port_2.setOperationType(Common.OperationType.CREATE);
 
-        // fill in port state structs for port 1
-        Port.PortConfiguration Port_Configuration_builder_2 = new_port_states_2.getConfiguration();
-        Port_Configuration_builder_2.toBuilder().setRevisionNumber(2);
-        Port_Configuration_builder_2.toBuilder().setUpdateType(Common.UpdateType.FULL);
-        Port_Configuration_builder_2.toBuilder().setId(port_id_2);
-        Port_Configuration_builder_2.toBuilder().setVpcId(vpc_id_1);
-        Port_Configuration_builder_2.toBuilder().setName(("tap" + port_id_2).substring(0, 14));
-        Port_Configuration_builder_2.toBuilder().setMacAddress("6c:dd:ee:00:00:03");
-        Port_Configuration_builder_2.toBuilder().setAdminStateUp(true);
+        // fill in port state structs for port 2
+        Port.PortConfiguration.Builder config_2 = new_port_states_port_2.getConfigurationBuilder();
+        config_2.
+                setRevisionNumber(2).
+                setUpdateType(Common.UpdateType.FULL).
+                setId(port_id_2).
+                setVpcId(vpc_id_1).
+                setName(("tap" + port_id_2).substring(0, 14)).
+                setMacAddress("6c:dd:ee:00:00:03");
+        Port.PortConfiguration.FixedIp.Builder fixedIpBuilder_port_2 = Port.PortConfiguration.FixedIp.newBuilder();
+        fixedIpBuilder_port_2.setSubnetId(subnet_id_1);
+        fixedIpBuilder_port_2.setIpAddress("10.10.0.3");
+        config_2.addFixedIps(fixedIpBuilder_port_2.build());
+        Port.PortConfiguration.SecurityGroupId securityGroupId_port_2 = Port.PortConfiguration.SecurityGroupId.newBuilder().setId("2").build();
+        config.addSecurityGroupIds(securityGroupId_port_2);
 
-        Port_Configuration_builder_2.toBuilder().addFixedIpsBuilder();
-        Port_Configuration_builder_2.toBuilder().getFixedIpsBuilderList().get(0).setSubnetId(subnet_id_1);
-        Port_Configuration_builder_2.toBuilder().getFixedIpsBuilderList().get(0).setIpAddress("10.0.0.3");
+        new_port_states_port_2.setConfiguration(config_2.build());
+        System.out.println("Port config builder content for port 2: \n" + new_port_states_port_2.getConfiguration().getMacAddress() + "\n");
+        Port.PortState port_state_two = new_port_states_port_2.build();
+        GoalState_builder.putPortStates(port_state_two.getConfiguration().getId(),port_state_two);
+        GoalState_builder.putHostToResourceId(aca_node_two_ip+"-2", port_state_two.getConfiguration().getId());
 
-        Port_Configuration_builder_2.toBuilder().addSecurityGroupIdsBuilder();
-        Port_Configuration_builder_2.toBuilder().getSecurityGroupIdsBuilder(0).setId("2");
+        System.out.println("Finished port state for port 2.");
 
-        // put the new port states of port 1 into the goalstatev2
-        GoalState_builder.getPortStatesMap().put("10.213.43.93-2",new_port_states_2);
-
+        // setting neighbor state of port 1 on node 2
 
         // add a new neighbor state with CREATE
-        Neighbor.NeighborState new_neighborState_2 = Neighbor.NeighborState.newBuilder().build();
-        new_neighborState_2.toBuilder().setOperationType(Common.OperationType.CREATE);
+        Neighbor.NeighborState.Builder new_neighborState_builder_port_2 = Neighbor.NeighborState.newBuilder();
+        new_neighborState_builder_port_2.setOperationType(Common.OperationType.CREATE);
 
-        // fill in neighbor state structs of port 1
-        Neighbor.NeighborConfiguration NeighborConfiguration_builder_2 = new_neighborState.getConfiguration();
-        NeighborConfiguration_builder_2.toBuilder().setRevisionNumber(2);
-        NeighborConfiguration_builder_2.toBuilder().setVpcId(vpc_id_1);
-        NeighborConfiguration_builder_2.toBuilder().setId(port_id_1);
-        NeighborConfiguration_builder_2.toBuilder().setMacAddress("6c:dd:ee:00:00:02");
-        NeighborConfiguration_builder_2.toBuilder().setHostIpAddress(aca_node_one_ip);
+        // fill in neighbor state structs of port 3
+        Neighbor.NeighborConfiguration.Builder NeighborConfiguration_builder_node_2 = Neighbor.NeighborConfiguration.newBuilder();
+        NeighborConfiguration_builder_node_2.setRevisionNumber(2);
+        NeighborConfiguration_builder_node_2.setVpcId(vpc_id_1);
+        NeighborConfiguration_builder_node_2.setId(port_id_1);
+        NeighborConfiguration_builder_node_2.setMacAddress("6c:dd:ee:00:00:02");
+        NeighborConfiguration_builder_node_2.setHostIpAddress(aca_node_one_ip);
 
-        NeighborConfiguration_builder_2.toBuilder().addFixedIpsBuilder();
-        NeighborConfiguration_builder_2.toBuilder().getFixedIpsBuilder(0).setNeighborType(Neighbor.NeighborType.L2);
-        NeighborConfiguration_builder_2.toBuilder().getFixedIpsBuilder(0).setSubnetId(subnet_id_1);
-        NeighborConfiguration_builder_2.toBuilder().getFixedIpsBuilder(0).setIpAddress("10.0.0.2");
+        Neighbor.NeighborConfiguration.FixedIp.Builder neighbor_fixed_ip_builder_node_2 = Neighbor.NeighborConfiguration.FixedIp.newBuilder();
+        neighbor_fixed_ip_builder_node_2.setNeighborType(Neighbor.NeighborType.L2);
+        neighbor_fixed_ip_builder_node_2.setSubnetId(subnet_id_1);
+        neighbor_fixed_ip_builder_node_2.setIpAddress("10.0.0.2");
 
-        GoalState_builder.getNeighborStatesMap().put("10.213.43.93-3", new_neighborState_2);
+        NeighborConfiguration_builder_node_2.addFixedIps(neighbor_fixed_ip_builder_node_2.build());
+
+        new_neighborState_builder_port_2.setConfiguration(NeighborConfiguration_builder_node_2.build());
+        Neighbor.NeighborState neighborState_two = new_neighborState_builder_port_2.build();
+        GoalState_builder.putNeighborStates(neighborState_two.getConfiguration().getId(), neighborState_two);
+        GoalState_builder.putHostToResourceId(aca_node_two_ip+"-3", neighborState_two.getConfiguration().getId());
+        // end of setting neighbor state of port 1 on node 2
+
 
         // end of setting up port 2 on aca node 2
-        System.out.println("Built GoalState successfully");
+
+        Goalstate.GoalStateV2 message = GoalState_builder.build();
+        System.out.println("Built GoalState successfully, GoalStateV2 content: \n"+message.toString()+"\n");
+
+        System.out.println("Time to call the GRPC functions");
+
+//        ManagedChannel channel = ManagedChannelBuilder.forAddress(aca_node_one_ip, 123).usePlaintext().build();
+//
+//        GoalStateProvisionerGrpc.GoalStateProvisionerStub stub = GoalStateProvisionerGrpc.newStub(channel);
+////        boolean execute_ping = false;
+//        StreamObserver<Goalstateprovisioner.GoalStateOperationReply> message_observer = new StreamObserver<>() {
+//            @Override
+//            public void onNext(Goalstateprovisioner.GoalStateOperationReply value) {
+//                System.out.println("onNext function with this GoalStateOperationReply: \n" + value.toString() +"\n");
+////                final boolean grpc_call_successful = value.getOperationStatuses(0).getOperationStatus().equals(Common.OperationStatus.SUCCESS);
+//            }
+//
+//            @Override
+//            public void onError(Throwable t) {
+//                System.out.println("onError function with this GoalStateOperationReply: \n" + t.getMessage() +"\n");
+//            }
+//
+//            @Override
+//            public void onCompleted() {
+//                System.out.println("onCompleted");
+//            }
+//        };
+//        io.grpc.stub.StreamObserver<Goalstate.GoalStateV2> response_observer = stub.pushGoalStatesStream(message_observer);
+//
+//        response_observer.onNext(message);
+//        response_observer.onCompleted();
+
+
 
         System.out.println("End of the test controller");
     }
