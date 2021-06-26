@@ -293,20 +293,20 @@ public class pseudo_controller {
             System.out.println("I can't sleep!!!!");
 
         }
-        List<concurrent_run_cmd> concurrent_ping_cmds = new ArrayList<>();
-        for (int i = 0; i < node_one_port_ips.size(); i++) {
-            if (i >= node_two_port_ips.size()) {
-                break;
-            }
-            String pinger_ip = node_one_port_ips.get(i);
-            String pinger_container_name = port_ip_to_container_name.get(pinger_ip);
-            String pingee_ip = node_two_port_ips.get(i);
-            String ping_cmd = "docker exec " + pinger_container_name + " ping -I " + pinger_ip + " -c1 " + pingee_ip;
-            concurrent_ping_cmds.add(new concurrent_run_cmd(ping_cmd, aca_node_one_ip, user_name, password));
-            System.out.println("Ping command is added: [" + ping_cmd + "]");
-        }
-
-        System.out.println("Time to execute these ping commands concurrently");
+//        List<concurrent_run_cmd> concurrent_ping_cmds = new ArrayList<>();
+//        for (int i = 0; i < node_one_port_ips.size(); i++) {
+//            if (i >= node_two_port_ips.size()) {
+//                break;
+//            }
+//            String pinger_ip = node_one_port_ips.get(i);
+//            String pinger_container_name = port_ip_to_container_name.get(pinger_ip);
+//            String pingee_ip = node_two_port_ips.get(i);
+//            String ping_cmd = "docker exec " + pinger_container_name + " ping -I " + pinger_ip + " -c1 " + pingee_ip;
+//            concurrent_ping_cmds.add(new concurrent_run_cmd(ping_cmd, aca_node_one_ip, user_name, password));
+//            System.out.println("Ping command is added: [" + ping_cmd + "]");
+//        }
+//
+//        System.out.println("Time to execute these ping commands concurrently");
 
         // Create a thread pool to execute the pings
 
@@ -315,15 +315,15 @@ public class pseudo_controller {
 //        ExecutorService pool = Executors.newFixedThreadPool(MAX_THREADS);
 
         // Concurrently execute the pings.
-        for (concurrent_run_cmd cmd : concurrent_ping_cmds) {
-             //concurrent
-            Thread t = new Thread(cmd);
-            t.start();
-            // sequential
-            //cmd.run()
-            // use thread pool
-//            pool.execute(cmd);
-        }
+//        for (concurrent_run_cmd cmd : concurrent_ping_cmds) {
+//             //concurrent
+//            Thread t = new Thread(cmd);
+//            t.start();
+//            // sequential
+//            //cmd.run()
+//            // use thread pool
+////            pool.execute(cmd);
+//        }
 
 
         System.out.println("End of the test controller");
@@ -386,20 +386,20 @@ public class pseudo_controller {
         aca_node_one_create_container_commands.add(docker_ps_cmd);
         aca_node_two_create_container_commands.add(docker_ps_cmd);
 
-        execute_ssh_commands(aca_node_one_create_container_commands, aca_node_one_ip, user_name, password);
-        execute_ssh_commands(aca_node_two_create_container_commands, aca_node_two_ip, user_name, password);
-        backgroupd_ping_start_time = System.currentTimeMillis();;
+//        execute_ssh_commands(aca_node_one_create_container_commands, aca_node_one_ip, user_name, password);
+//        execute_ssh_commands(aca_node_two_create_container_commands, aca_node_two_ip, user_name, password);
+//        backgroupd_ping_start_time = System.currentTimeMillis();;
         System.out.println("DONE creating containers on both hosts, need to start the background pings now.");
         // start the background thread here doing the ping from 1 port to another, util the ping is successful.
         // it pings every 0.001 second, or 1 millisecond, for 60 seconds
         String background_ping_command = "docker exec "+port_ip_to_container_name.get(background_pinger)+" ping -I " + background_pinger + " -c 60000 -i  0.001 " + background_pingee + " > /home/user/output.log";
         System.out.println("Created background ping cmd: " + background_ping_command );
         concurrent_run_cmd c = new concurrent_run_cmd(background_ping_command, aca_node_one_ip, user_name, password);
-        taskExecutor.execute(c);
+//        taskExecutor.execute(c);
 
         // After the ping thread was started, execute the other commands, and then keep the Test Controller going
-        execute_ssh_commands(aca_node_one_ovs_docker_commands, aca_node_one_ip, user_name, password);
-        execute_ssh_commands(aca_node_two_ovs_docker_commands, aca_node_two_ip, user_name, password);
+//        execute_ssh_commands(aca_node_one_ovs_docker_commands, aca_node_one_ip, user_name, password);
+//        execute_ssh_commands(aca_node_two_ovs_docker_commands, aca_node_two_ip, user_name, password);
     }
 
 
